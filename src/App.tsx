@@ -64,11 +64,11 @@ export const App: React.FC = () => {
     }, 4000);
   };
 
-  // Load history whenever user changes
+  // Load history whenever user changes or tab changes
   useEffect(() => {
     const fetchHistory = async () => {
       if (user?.email) {
-        // Sync local cache to Convex cloud if any exists
+        // Sync any pending local records to Convex cloud
         await syncLocalHistoryToConvex(user);
         const records = await getCalculationHistory(user.email);
         setHistory(records);
@@ -77,6 +77,23 @@ export const App: React.FC = () => {
       }
     };
     fetchHistory();
+  }, [user, currentTab]);
+
+  // Real-time synchronization across multiple browser tabs
+  useEffect(() => {
+    const handleSyncOnFocus = async () => {
+      if (user?.email) {
+        const records = await getCalculationHistory(user.email);
+        setHistory(records);
+      }
+    };
+
+    window.addEventListener('focus', handleSyncOnFocus);
+    window.addEventListener('storage', handleSyncOnFocus);
+    return () => {
+      window.removeEventListener('focus', handleSyncOnFocus);
+      window.removeEventListener('storage', handleSyncOnFocus);
+    };
   }, [user]);
 
   // Sync latest grade scale & departments from Convex database on mount
@@ -138,6 +155,20 @@ export const App: React.FC = () => {
       await clearAllHistory(user.email);
       setHistory([]);
       showToast('All history records cleared.', 'info');
+    }
+  };
+
+  // Cloud Sync Handler
+  const handleSyncCloud = async () => {
+    if (!user) return;
+    showToast('Syncing calculation history with Convex Cloud...', 'info');
+    const migrated = await syncLocalHistoryToConvex(user);
+    const refreshed = await getCalculationHistory(user.email);
+    setHistory(refreshed);
+    if (migrated > 0) {
+      showToast(`Migrated ${migrated} calculation(s) to Convex Cloud!`, 'success');
+    } else {
+      showToast(`All ${refreshed.length} records are synchronized with Convex Cloud.`, 'success');
     }
   };
 
@@ -268,6 +299,7 @@ export const App: React.FC = () => {
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
             onReloadToCalculator={handleReloadToCalculator}
+            onSyncCloud={handleSyncCloud}
           />
         )}
 

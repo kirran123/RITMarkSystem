@@ -201,58 +201,59 @@ export async function clearAllHistory(userEmail: string): Promise<boolean> {
 /**
  * Automatically migrate and sync any unsaved local calculation records to Convex cloud
  */
-export async function syncLocalHistoryToConvex(user: UserSession): Promise<void> {
-  if (!convexClient || !user?.email) return;
+export async function syncLocalHistoryToConvex(user: UserSession): Promise<number> {
+  if (!convexClient || !user?.email) return 0;
 
   const email = user.email.trim().toLowerCase();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-    if (!raw) return;
+    if (!raw) return 0;
     const all: HistoryRecord[] = JSON.parse(raw);
+    if (!Array.isArray(all) || all.length === 0) return 0;
+
+    // Any record that belongs to this user or is unassigned
     const userLocalRecords = all.filter(
-      (r) => r.userEmail && r.userEmail.toLowerCase() === email
+      (r) => !r.userEmail || r.userEmail.toLowerCase() === email
     );
 
-    if (userLocalRecords.length === 0) return;
+    if (userLocalRecords.length === 0) return 0;
 
-    // Get current cloud records
+    const formattedRecords = userLocalRecords.map((rec) => {
+      const cleanSubjects = (rec.subjects || []).map((s, idx) => ({
+        id: s.id ?? idx + 1,
+        code: s.code || '',
+        name: s.name || `Subject ${idx + 1}`,
+        grade: s.grade || 'A',
+        gradePoint: Number(s.gradePoint ?? 8),
+        mark: Number(s.mark ?? 80),
+        credits: Number(s.credits ?? 3),
+      }));
+
+      return {
+        userEmail: email,
+        userName: rec.userName || user.name,
+        candidateName: rec.candidateName || user.name || 'Anonymous',
+        semester: rec.semester || 'Mark Calculation',
+        subjectCount: rec.subjectCount || cleanSubjects.length,
+        subjects: cleanSubjects,
+        totalMarks: Number(rec.totalMarks || 0),
+        maxMarks: Number(rec.maxMarks || (cleanSubjects.length * 100)),
+        percentage: Number(rec.percentage || 0),
+        cgpa: Number(rec.cgpa || 0),
+        classification: rec.classification || '',
+        timestamp: Number(rec.timestamp || Date.now()),
+      };
+    });
+
     // @ts-ignore
-    const cloudRecords = await convexClient.query('calculations:getHistoryByUser', { userEmail: email });
-    const cloudTimestamps = new Set(
-      Array.isArray(cloudRecords) ? cloudRecords.map((c: any) => c.timestamp) : []
-    );
+    const res = await convexClient.mutation('calculations:migrateBatchCalculations', {
+      records: formattedRecords,
+    });
 
-    // Upload local records not yet present in Convex
-    for (const rec of userLocalRecords) {
-      if (!cloudTimestamps.has(rec.timestamp)) {
-        const cleanSubjects = (rec.subjects || []).map((s, idx) => ({
-          id: s.id ?? idx + 1,
-          code: s.code || '',
-          name: s.name || `Subject ${idx + 1}`,
-          grade: s.grade,
-          gradePoint: Number(s.gradePoint || 0),
-          mark: Number(s.mark || 0),
-          credits: Number(s.credits || 3),
-        }));
-
-        // @ts-ignore
-        await convexClient.mutation('calculations:saveCalculation', {
-          userEmail: email,
-          userName: rec.userName || user.name,
-          candidateName: rec.candidateName || user.name || 'Anonymous',
-          semester: rec.semester || 'Mark Calculation',
-          subjectCount: rec.subjectCount || cleanSubjects.length,
-          subjects: cleanSubjects,
-          totalMarks: rec.totalMarks,
-          maxMarks: rec.maxMarks,
-          percentage: rec.percentage,
-          cgpa: rec.cgpa,
-          classification: rec.classification,
-        });
-      }
-    }
+    return res?.count || 0;
   } catch (err) {
     console.warn('Sync local history to Convex error:', err);
+    return 0;
   }
 }
 

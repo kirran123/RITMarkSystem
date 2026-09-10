@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { HistoryRecord, UserSession } from '../types';
 import { generateGradeSheetPdf } from '../utils/pdfGenerator';
 import {
@@ -10,7 +10,9 @@ import {
   Layers,
   LogIn,
   FileSpreadsheet,
-  User
+  User,
+  RefreshCw,
+  Cloud
 } from 'lucide-react';
 
 interface HistoryViewProps {
@@ -20,6 +22,7 @@ interface HistoryViewProps {
   onDeleteRecord: (id: string) => Promise<void>;
   onClearAll: () => Promise<void>;
   onReloadToCalculator: (record: HistoryRecord) => void;
+  onSyncCloud?: () => Promise<void>;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -29,7 +32,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onDeleteRecord,
   onClearAll,
   onReloadToCalculator,
+  onSyncCloud,
 }) => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncClick = async () => {
+    if (onSyncCloud) {
+      setIsSyncing(true);
+      try {
+        await onSyncCloud();
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
   if (!user) {
     return (
       <div className="bg-white rounded-3xl p-8 sm:p-12 text-center max-w-xl mx-auto shadow-md border border-slate-200 animate-fade-in my-12">
@@ -87,15 +103,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         </div>
 
-        {history.length > 0 && (
-          <button
-            onClick={onClearAll}
-            className="px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Trash2 className="w-4 h-4" />
-            Clear All History
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {onSyncCloud && (
+            <button
+              onClick={handleSyncClick}
+              disabled={isSyncing}
+              className="px-3.5 py-2 text-xs font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-700 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync with Convex Cloud'}</span>
+            </button>
+          )}
+
+          {history.length > 0 && (
+            <button
+              onClick={onClearAll}
+              className="px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear All History
+            </button>
+          )}
+        </div>
       </div>
 
       {/* History Records List */}

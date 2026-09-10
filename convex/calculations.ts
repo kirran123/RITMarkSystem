@@ -17,25 +17,88 @@ export const saveCalculation = mutation({
         code: v.optional(v.string()),
         name: v.string(),
         grade: v.string(),
-        gradePoint: v.number(),
-        mark: v.number(),
+        gradePoint: v.optional(v.number()),
+        mark: v.optional(v.number()),
         credits: v.optional(v.number()),
       })
     ),
     totalMarks: v.number(),
     maxMarks: v.number(),
     percentage: v.number(),
-    cgpa: v.number(),
-    classification: v.string(),
+    cgpa: v.optional(v.number()),
+    classification: v.optional(v.string()),
     notes: v.optional(v.string()),
+    timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const email = args.userEmail.trim().toLowerCase();
     const id = await ctx.db.insert("calculations", {
       ...args,
-      userEmail: args.userEmail.trim().toLowerCase(),
-      timestamp: Date.now(),
+      userEmail: email,
+      cgpa: args.cgpa ?? 0,
+      classification: args.classification ?? "",
+      timestamp: args.timestamp ?? Date.now(),
     });
     return { success: true, id };
+  },
+});
+
+/**
+ * Batch migrate calculations from client localStorage
+ */
+export const migrateBatchCalculations = mutation({
+  args: {
+    records: v.array(
+      v.object({
+        userEmail: v.string(),
+        userName: v.optional(v.string()),
+        candidateName: v.optional(v.string()),
+        semester: v.optional(v.string()),
+        subjectCount: v.number(),
+        subjects: v.array(
+          v.object({
+            id: v.optional(v.number()),
+            code: v.optional(v.string()),
+            name: v.string(),
+            grade: v.string(),
+            gradePoint: v.optional(v.number()),
+            mark: v.optional(v.number()),
+            credits: v.optional(v.number()),
+          })
+        ),
+        totalMarks: v.number(),
+        maxMarks: v.number(),
+        percentage: v.number(),
+        cgpa: v.optional(v.number()),
+        classification: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        timestamp: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    let savedCount = 0;
+    for (const rec of args.records) {
+      const email = rec.userEmail.trim().toLowerCase();
+      // Check if already exists with same timestamp and email
+      const existing = await ctx.db
+        .query("calculations")
+        .withIndex("by_userEmail", (q) => q.eq("userEmail", email))
+        .filter((q) => q.eq(q.field("timestamp"), rec.timestamp || 0))
+        .first();
+
+      if (!existing) {
+        await ctx.db.insert("calculations", {
+          ...rec,
+          userEmail: email,
+          cgpa: rec.cgpa ?? 0,
+          classification: rec.classification ?? "",
+          timestamp: rec.timestamp ?? Date.now(),
+        });
+        savedCount++;
+      }
+    }
+    return { success: true, count: savedCount };
   },
 });
 
