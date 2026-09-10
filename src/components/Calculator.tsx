@@ -340,12 +340,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
             <div className="text-xs font-bold text-slate-600">
               Total Marks: <span className="text-blue-950 font-black">{liveCalc.totalMarks}</span> (÷ {liveCalc.subjectCount} Subjects)
             </div>
-
-            <div className="pt-1">
-              <span className="inline-block px-3 py-1 rounded-full text-[11px] font-bold bg-white text-blue-900 border border-blue-200 shadow-2xs">
-                {liveCalc.classification}
-              </span>
-            </div>
           </div>
 
           {/* 3. ACTION BUTTONS (Download PDF & Reset Grades matching screenshot) */}
