@@ -428,27 +428,86 @@ export function saveNewStaff(staff: Omit<StaffMember, 'id' | 'createdAt'>): Staf
   const newItem: StaffMember = {
     ...staff,
     id: `staff_${Date.now()}`,
+    password: staff.password || 'Kirranst@14',
     createdAt: Date.now(),
   };
   all.push(newItem);
   localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
+
+  // Sync with Convex database
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      convexClient.mutation('admin:addStaff', {
+        name: newItem.name,
+        email: newItem.email,
+        password: newItem.password,
+        department: newItem.department || 'Information Technology',
+        designation: newItem.designation,
+        canCalculate: newItem.canCalculate,
+      }).catch((err) => {
+        console.warn('Convex addStaff deferred:', err);
+      });
+    } catch (err) {
+      console.warn('Convex addStaff error:', err);
+    }
+  }
+
   return newItem;
 }
 
 export function updateStoredStaff(id: string, updated: Partial<StaffMember>): StaffMember[] {
   const all = getStoredStaff();
-  const index = all.findIndex((s) => s.id === id);
+  const index = all.findIndex((s) => s.id === id || (updated.email && s.email.toLowerCase() === updated.email.toLowerCase()));
   if (index !== -1) {
     all[index] = { ...all[index], ...updated };
     localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
+
+    // Sync with Convex database
+    if (convexClient) {
+      const target = all[index];
+      try {
+        // @ts-ignore
+        convexClient.mutation('admin:updateStaff', {
+          id: target.id.startsWith('j') ? target.id : undefined,
+          email: target.email,
+          name: target.name,
+          password: target.password,
+          designation: target.designation,
+          department: target.department,
+          canCalculate: target.canCalculate,
+        }).catch((err) => {
+          console.warn('Convex updateStaff deferred:', err);
+        });
+      } catch (err) {
+        console.warn('Convex updateStaff error:', err);
+      }
+    }
   }
   return all;
 }
 
 export function deleteStoredStaff(id: string): StaffMember[] {
-  const all = getStoredStaff().filter((s) => s.id !== id);
-  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
-  return all;
+  const all = getStoredStaff();
+  const target = all.find((s) => s.id === id);
+  const filtered = all.filter((s) => s.id !== id);
+  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(filtered));
+
+  if (convexClient && target) {
+    try {
+      // @ts-ignore
+      convexClient.mutation('admin:deleteStaff', {
+        id: target.id.startsWith('j') ? target.id : undefined,
+        email: target.email,
+      }).catch((err) => {
+        console.warn('Convex deleteStaff deferred:', err);
+      });
+    } catch (err) {
+      console.warn('Convex deleteStaff error:', err);
+    }
+  }
+
+  return filtered;
 }
 
 // ==================== GRADE & MARK SCHEME MANAGEMENT ====================

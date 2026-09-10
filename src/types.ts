@@ -61,6 +61,7 @@ export interface StaffMember {
   staffId?: string;
   name: string;
   email: string;
+  password?: string;
   department?: string;
   designation: string;
   canCalculate: boolean;

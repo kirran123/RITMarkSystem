@@ -17,7 +17,10 @@ import {
   Search,
   Check,
   Sliders,
-  RotateCcw
+  RotateCcw,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -71,10 +74,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Staff Modal State (No Staff ID, No Department)
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [staffForm, setStaffForm] = useState({
     name: '',
     email: '',
     designation: 'Assistant Professor',
+    password: '',
     canCalculate: true,
   });
 
@@ -119,8 +124,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: '',
       email: '',
       designation: 'Assistant Professor',
+      password: '',
       canCalculate: true,
     });
+    setShowStaffPassword(false);
     setIsStaffModalOpen(true);
   };
 
@@ -131,8 +138,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: staff.name,
       email: staff.email,
       designation: staff.designation,
+      password: staff.password || '',
       canCalculate: staff.canCalculate,
     });
+    setShowStaffPassword(false);
     setIsStaffModalOpen(true);
   };
 
@@ -648,6 +657,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="e.g. balaji@ritrjpm.ac.in"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Portal Login Password {editingStaff ? '(Leave blank to keep unchanged)' : '*'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showStaffPassword ? 'text' : 'password'}
+                    required={!editingStaff}
+                    value={staffForm.password}
+                    onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
+                    placeholder={editingStaff ? '•••••••• (Enter new to change)' : 'Set password (e.g. Kirranst@14)'}
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowStaffPassword(!showStaffPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    title={showStaffPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  The staff member will use this password along with their email to log into the portal.
+                </p>
               </div>
 
               {/* Calculation Authorization Checkbox */}
