@@ -57,7 +57,7 @@ export async function getCalculationHistory(userEmail: string, role?: string): P
         isAdmin,
       });
       if (Array.isArray(records)) {
-        const formatted: HistoryRecord[] = records.map((r: any) => ({
+        const fromConvex: HistoryRecord[] = records.map((r: any) => ({
           ...r,
           id: r._id || r.id,
           candidateName: (r.candidateName || r.userName || 'Anonymous').trim(),
@@ -82,12 +82,62 @@ export async function getCalculationHistory(userEmail: string, role?: string): P
           timestamp: Number(r.timestamp || r._creationTime || Date.now()),
         }));
 
-        // Update localStorage as a resilient offline cache
+        // Merge: pick up any localStorage records NOT yet in Convex (pending upload)
+        const convexIds = new Set(fromConvex.map((r) => r.id));
+        const convexTimestamps = new Set(fromConvex.map((r) => r.timestamp));
+        let merged = [...fromConvex];
+
         try {
-          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(formatted));
+          const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+          if (raw) {
+            const localAll: HistoryRecord[] = JSON.parse(raw);
+            const pending = localAll.filter((r) => {
+              const matchesUser = isAdmin || !r.userEmail || r.userEmail.toLowerCase() === email;
+              const notInConvex = !convexIds.has(r.id) && !convexTimestamps.has(r.timestamp);
+              return matchesUser && notInConvex;
+            });
+            if (pending.length > 0) {
+              merged = [...pending, ...merged];
+              // Upload pending local-only records to Convex so they appear cross-device
+              pending.forEach((rec) => {
+                try {
+                  const cleanSubjects = (rec.subjects || []).map((s: any, idx: number) => ({
+                    id: typeof s.id === 'number' ? s.id : idx + 1,
+                    code: String(s.code || `${idx + 1}`),
+                    name: String(s.name || `Subject ${idx + 1}`),
+                    grade: String(s.grade || 'A+').toUpperCase(),
+                    gradePoint: Number(s.gradePoint ?? 0),
+                    mark: Number(s.mark ?? 0),
+                    credits: Number(s.credits ?? 0),
+                  }));
+                  // @ts-ignore
+                  convexClient!.mutation('calculations:saveCalculation', {
+                    userEmail: (rec.userEmail || email).toLowerCase(),
+                    userName: rec.userName || 'Faculty Member',
+                    candidateName: (rec.candidateName || 'Anonymous').trim(),
+                    semester: rec.semester || 'Mark Calculation',
+                    subjectCount: cleanSubjects.length,
+                    subjects: cleanSubjects,
+                    totalMarks: Number(rec.totalMarks || 0),
+                    maxMarks: Number(rec.maxMarks || 100),
+                    percentage: Number(rec.percentage || 0),
+                    cgpa: Number(rec.cgpa || 0),
+                    classification: rec.classification || '',
+                    timestamp: Number(rec.timestamp || Date.now()),
+                  }).catch(() => {});
+                } catch {}
+              });
+            }
+          }
         } catch {}
 
-        return formatted;
+        // Sort and write back merged result to localStorage cache
+        merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        try {
+          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(merged));
+        } catch {}
+
+        return merged;
       }
     } catch (err) {
       console.warn('Convex query fallback to localStorage:', err);
