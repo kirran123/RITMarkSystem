@@ -7,8 +7,9 @@ export default defineSchema({
     email: v.string(),
     password: v.string(),
     name: v.string(),
-    role: v.string(), // "student" | "staff" | "admin"
+    role: v.string(), // "staff" | "admin"
     department: v.optional(v.string()),
+    designation: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_email", ["email"]),
 
