@@ -224,7 +224,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
   // Save to history
   const handleSave = async () => {
-    const calc = result || liveCalc;
+    const baseCalc = result || liveCalc;
+    const calc: CalculationResult = {
+      ...baseCalc,
+      candidateName: candidateName.trim() || user?.name || 'Anonymous',
+    };
+
     if (!user) {
       onOpenLogin();
       return;
@@ -245,16 +250,28 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
   // Download PDF
   const handleDownloadPdf = () => {
-    const calc = result || liveCalc;
+    const baseCalc = result || liveCalc;
+    const calc: CalculationResult = {
+      ...baseCalc,
+      candidateName: candidateName.trim() || user?.name || 'Anonymous',
+    };
+
     generateGradeSheetPdf({
       calculation: calc,
       userEmail: user?.email,
-      userName: candidateName.trim(),
+      userName: candidateName.trim() || user?.name || 'Anonymous',
       department: user?.department || 'Information Technology',
       semester,
       gradeMap: activeMap,
       grades,
     });
+
+    // Automatically store in Convex cloud history when downloaded by authorized user
+    if (user && onSaveRecord) {
+      onSaveRecord(calc, semester)
+        .then(() => setSaveSuccess(true))
+        .catch(console.error);
+    }
   };
 
   // Reset Grades to default

@@ -42,12 +42,28 @@ export const DEFAULT_STAFF: StaffMember[] = [
 // ==================== CALCULATION HISTORY ====================
 
 export async function getCalculationHistory(userEmail: string): Promise<HistoryRecord[]> {
+  const email = userEmail.trim().toLowerCase();
+
   if (convexClient) {
     try {
       // @ts-ignore
-      const records = await convexClient.query('calculations:getHistoryByUser', { userEmail });
-      if (Array.isArray(records) && records.length > 0) {
-        return records.map((r: any) => ({ ...r, id: r._id || r.id }));
+      const records = await convexClient.query('calculations:getHistoryByUser', { userEmail: email });
+      if (Array.isArray(records)) {
+        const formatted = records.map((r: any) => ({
+          ...r,
+          id: r._id || r.id,
+          candidateName: r.candidateName || r.userName || 'Anonymous',
+        }));
+
+        // Update localStorage as a resilient offline cache
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+          const localAll: HistoryRecord[] = raw ? JSON.parse(raw) : [];
+          const otherUsers = localAll.filter((rec) => rec.userEmail && rec.userEmail.toLowerCase() !== email);
+          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify([...formatted, ...otherUsers]));
+        } catch {}
+
+        return formatted;
       }
     } catch (err) {
       console.warn('Convex query fallback to localStorage:', err);
@@ -59,7 +75,7 @@ export async function getCalculationHistory(userEmail: string): Promise<HistoryR
     if (!raw) return [];
     const all: HistoryRecord[] = JSON.parse(raw);
     return all
-      .filter((rec) => rec.userEmail.toLowerCase() === userEmail.toLowerCase())
+      .filter((rec) => rec.userEmail && rec.userEmail.toLowerCase() === email)
       .sort((a, b) => b.timestamp - a.timestamp);
   } catch (e) {
     console.error('Failed to read calculation history from localStorage', e);
@@ -72,14 +88,52 @@ export async function saveCalculationRecord(
   calc: CalculationResult,
   semester: string = 'Mark Calculation'
 ): Promise<HistoryRecord> {
+  const email = user.email.trim().toLowerCase();
+  let serverId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const cleanSubjects = (calc.subjects || []).map((s, idx) => ({
+    id: s.id ?? idx + 1,
+    code: s.code || '',
+    name: s.name || `Subject ${idx + 1}`,
+    grade: s.grade,
+    gradePoint: Number(s.gradePoint || 0),
+    mark: Number(s.mark || 0),
+    credits: Number(s.credits || 3),
+  }));
+
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      const res = await convexClient.mutation('calculations:saveCalculation', {
+        userEmail: email,
+        userName: user.name,
+        candidateName: calc.candidateName || user.name || 'Anonymous',
+        semester,
+        subjectCount: calc.subjectCount,
+        subjects: cleanSubjects,
+        totalMarks: calc.totalMarks,
+        maxMarks: calc.maxMarks,
+        percentage: calc.percentage,
+        cgpa: calc.cgpa,
+        classification: calc.classification,
+      });
+      if (res?.id) {
+        serverId = res.id;
+      }
+    } catch (err) {
+      console.warn('Convex save mutation deferred:', err);
+    }
+  }
+
   const newRecord: HistoryRecord = {
     ...calc,
-    id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    userEmail: user.email,
+    id: serverId,
+    userEmail: email,
     userName: user.name,
-    candidateName: calc.candidateName || user.name,
+    candidateName: calc.candidateName || user.name || 'Anonymous',
     semester,
     timestamp: Date.now(),
+    subjects: cleanSubjects,
   };
 
   try {
@@ -89,27 +143,6 @@ export async function saveCalculationRecord(
     localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(all));
   } catch (e) {
     console.error('Error saving to localStorage', e);
-  }
-
-  if (convexClient) {
-    try {
-      // @ts-ignore
-      await convexClient.mutation('calculations:saveCalculation', {
-        userEmail: user.email,
-        userName: user.name,
-        candidateName: calc.candidateName,
-        semester,
-        subjectCount: calc.subjectCount,
-        subjects: calc.subjects,
-        totalMarks: calc.totalMarks,
-        maxMarks: calc.maxMarks,
-        percentage: calc.percentage,
-        cgpa: calc.cgpa,
-        classification: calc.classification,
-      });
-    } catch (err) {
-      console.warn('Convex save mutation deferred:', err);
-    }
   }
 
   return newRecord;
@@ -127,7 +160,7 @@ export async function deleteCalculationRecord(recordId: string): Promise<boolean
     console.error('Failed to delete from localStorage', e);
   }
 
-  if (convexClient && recordId.startsWith('k')) {
+  if (convexClient) {
     try {
       // @ts-ignore
       await convexClient.mutation('calculations:deleteCalculation', { id: recordId });
@@ -140,11 +173,13 @@ export async function deleteCalculationRecord(recordId: string): Promise<boolean
 }
 
 export async function clearAllHistory(userEmail: string): Promise<boolean> {
+  const email = userEmail.trim().toLowerCase();
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
     if (raw) {
       const all: HistoryRecord[] = JSON.parse(raw);
-      const filtered = all.filter((r) => r.userEmail.toLowerCase() !== userEmail.toLowerCase());
+      const filtered = all.filter((r) => !r.userEmail || r.userEmail.toLowerCase() !== email);
       localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
     }
   } catch (e) {
@@ -154,13 +189,71 @@ export async function clearAllHistory(userEmail: string): Promise<boolean> {
   if (convexClient) {
     try {
       // @ts-ignore
-      await convexClient.mutation('calculations:clearHistoryByUser', { userEmail });
+      await convexClient.mutation('calculations:clearHistoryByUser', { userEmail: email });
     } catch (err) {
       console.warn('Convex clear failed:', err);
     }
   }
 
   return true;
+}
+
+/**
+ * Automatically migrate and sync any unsaved local calculation records to Convex cloud
+ */
+export async function syncLocalHistoryToConvex(user: UserSession): Promise<void> {
+  if (!convexClient || !user?.email) return;
+
+  const email = user.email.trim().toLowerCase();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (!raw) return;
+    const all: HistoryRecord[] = JSON.parse(raw);
+    const userLocalRecords = all.filter(
+      (r) => r.userEmail && r.userEmail.toLowerCase() === email
+    );
+
+    if (userLocalRecords.length === 0) return;
+
+    // Get current cloud records
+    // @ts-ignore
+    const cloudRecords = await convexClient.query('calculations:getHistoryByUser', { userEmail: email });
+    const cloudTimestamps = new Set(
+      Array.isArray(cloudRecords) ? cloudRecords.map((c: any) => c.timestamp) : []
+    );
+
+    // Upload local records not yet present in Convex
+    for (const rec of userLocalRecords) {
+      if (!cloudTimestamps.has(rec.timestamp)) {
+        const cleanSubjects = (rec.subjects || []).map((s, idx) => ({
+          id: s.id ?? idx + 1,
+          code: s.code || '',
+          name: s.name || `Subject ${idx + 1}`,
+          grade: s.grade,
+          gradePoint: Number(s.gradePoint || 0),
+          mark: Number(s.mark || 0),
+          credits: Number(s.credits || 3),
+        }));
+
+        // @ts-ignore
+        await convexClient.mutation('calculations:saveCalculation', {
+          userEmail: email,
+          userName: rec.userName || user.name,
+          candidateName: rec.candidateName || user.name || 'Anonymous',
+          semester: rec.semester || 'Mark Calculation',
+          subjectCount: rec.subjectCount || cleanSubjects.length,
+          subjects: cleanSubjects,
+          totalMarks: rec.totalMarks,
+          maxMarks: rec.maxMarks,
+          percentage: rec.percentage,
+          cgpa: rec.cgpa,
+          classification: rec.classification,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Sync local history to Convex error:', err);
+  }
 }
 
 // ==================== AUTH SESSION ====================

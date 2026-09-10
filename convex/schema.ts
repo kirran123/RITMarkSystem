@@ -22,6 +22,8 @@ export default defineSchema({
     subjectCount: v.number(),
     subjects: v.array(
       v.object({
+        id: v.optional(v.number()),
+        code: v.optional(v.string()),
         name: v.string(),
         grade: v.string(),
         gradePoint: v.number(),

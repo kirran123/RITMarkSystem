@@ -13,6 +13,8 @@ export const saveCalculation = mutation({
     subjectCount: v.number(),
     subjects: v.array(
       v.object({
+        id: v.optional(v.number()),
+        code: v.optional(v.string()),
         name: v.string(),
         grade: v.string(),
         gradePoint: v.number(),
@@ -30,6 +32,7 @@ export const saveCalculation = mutation({
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("calculations", {
       ...args,
+      userEmail: args.userEmail.trim().toLowerCase(),
       timestamp: Date.now(),
     });
     return { success: true, id };
@@ -42,9 +45,10 @@ export const saveCalculation = mutation({
 export const getHistoryByUser = query({
   args: { userEmail: v.string() },
   handler: async (ctx, args) => {
+    const email = args.userEmail.trim().toLowerCase();
     const list = await ctx.db
       .query("calculations")
-      .withIndex("by_userEmail", (q) => q.eq("userEmail", args.userEmail))
+      .withIndex("by_userEmail", (q) => q.eq("userEmail", email))
       .collect();
 
     // Sort descending by timestamp
@@ -56,10 +60,14 @@ export const getHistoryByUser = query({
  * Delete a specific calculation record
  */
 export const deleteCalculation = mutation({
-  args: { id: v.id("calculations") },
+  args: { id: v.string() },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
-    return { success: true };
+    try {
+      await ctx.db.delete(args.id as any);
+      return { success: true };
+    } catch {
+      return { success: false };
+    }
   },
 });
 
@@ -69,9 +77,10 @@ export const deleteCalculation = mutation({
 export const clearHistoryByUser = mutation({
   args: { userEmail: v.string() },
   handler: async (ctx, args) => {
+    const email = args.userEmail.trim().toLowerCase();
     const records = await ctx.db
       .query("calculations")
-      .withIndex("by_userEmail", (q) => q.eq("userEmail", args.userEmail))
+      .withIndex("by_userEmail", (q) => q.eq("userEmail", email))
       .collect();
 
     for (const record of records) {
@@ -80,3 +89,4 @@ export const clearHistoryByUser = mutation({
     return { success: true, deletedCount: records.length };
   },
 });
+

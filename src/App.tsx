@@ -16,6 +16,7 @@ import {
   saveCalculationRecord,
   deleteCalculationRecord,
   clearAllHistory,
+  syncLocalHistoryToConvex,
   getStoredDepartments,
   syncDepartmentsFromConvex,
   resetToDefaultDepartments,
@@ -67,6 +68,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       if (user?.email) {
+        // Sync local cache to Convex cloud if any exists
+        await syncLocalHistoryToConvex(user);
         const records = await getCalculationHistory(user.email);
         setHistory(records);
       } else {
