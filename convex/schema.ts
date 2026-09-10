@@ -16,27 +16,27 @@ export default defineSchema({
   // Mark Calculation records
   calculations: defineTable({
     userEmail: v.string(),
-    userName: v.optional(v.string()),
-    candidateName: v.optional(v.string()),
-    semester: v.optional(v.string()),
+    userName: v.optional(v.union(v.string(), v.null())),
+    candidateName: v.optional(v.union(v.string(), v.null())),
+    semester: v.optional(v.union(v.string(), v.null())),
     subjectCount: v.number(),
     subjects: v.array(
       v.object({
-        id: v.optional(v.number()),
-        code: v.optional(v.string()),
+        id: v.optional(v.union(v.number(), v.null())),
+        code: v.optional(v.union(v.string(), v.null())),
         name: v.string(),
         grade: v.string(),
-        gradePoint: v.optional(v.number()),
-        mark: v.optional(v.number()),
-        credits: v.optional(v.number()),
+        gradePoint: v.optional(v.union(v.number(), v.null())),
+        mark: v.optional(v.union(v.number(), v.null())),
+        credits: v.optional(v.union(v.number(), v.null())),
       })
     ),
     totalMarks: v.number(),
     maxMarks: v.number(),
     percentage: v.number(),
-    cgpa: v.optional(v.number()),
-    classification: v.optional(v.string()),
-    notes: v.optional(v.string()),
+    cgpa: v.optional(v.union(v.number(), v.null())),
+    classification: v.optional(v.union(v.string(), v.null())),
+    notes: v.optional(v.union(v.string(), v.null())),
     timestamp: v.number(),
   })
     .index("by_userEmail", ["userEmail"])

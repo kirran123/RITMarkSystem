@@ -201,6 +201,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
     setSaveSuccess(false);
   };
 
+  const liveCalc = calculateAcademicMetrics(subjects, candidateName.trim(), activeMap);
+
   // Calculate
   const handleCalculate = () => {
     const calcResult = calculateAcademicMetrics(subjects, candidateName.trim(), activeMap);
@@ -224,24 +226,25 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
   // Save to history
   const handleSave = async () => {
+    if (!user) {
+      onOpenLogin();
+      return;
+    }
+
     const baseCalc = result || liveCalc;
     const calc: CalculationResult = {
       ...baseCalc,
       candidateName: candidateName.trim() || user?.name || 'Anonymous',
     };
 
-    if (!user) {
-      onOpenLogin();
-      return;
-    }
-
     if (onSaveRecord) {
       setIsSaving(true);
       try {
         await onSaveRecord(calc, semester);
         setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 5000);
       } catch (err) {
-        console.error(err);
+        console.error('Failed to save record to Convex:', err);
       } finally {
         setIsSaving(false);
       }
@@ -269,7 +272,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
     // Automatically store in Convex cloud history when downloaded by authorized user
     if (user && onSaveRecord) {
       onSaveRecord(calc, semester)
-        .then(() => setSaveSuccess(true))
+        .then(() => {
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 5000);
+        })
         .catch(console.error);
     }
   };
@@ -281,8 +287,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
     setResult(null);
     setSaveSuccess(false);
   };
-
-  const liveCalc = calculateAcademicMetrics(subjects, candidateName.trim(), activeMap);
 
   return (
     <div className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto">

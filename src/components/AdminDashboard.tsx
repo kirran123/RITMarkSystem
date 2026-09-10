@@ -32,6 +32,7 @@ interface AdminDashboardProps {
   onDeleteRecord?: (id: string) => Promise<void>;
   onClearAll?: () => Promise<void>;
   onReloadToCalculator?: (record: HistoryRecord) => void;
+  onSyncCloud?: () => Promise<void>;
   onAddDepartment: (dept: Omit<DepartmentItem, 'id'>) => void;
   onUpdateDepartment: (id: string, updated: Partial<DepartmentItem>) => void;
   onDeleteDepartment: (id: string) => void;
@@ -50,6 +51,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteRecord = async () => {},
   onClearAll = async () => {},
   onReloadToCalculator = () => {},
+  onSyncCloud,
   onAddDepartment,
   onUpdateDepartment,
   onDeleteDepartment,
@@ -730,6 +732,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onDeleteRecord={onDeleteRecord}
           onClearAll={onClearAll}
           onReloadToCalculator={onReloadToCalculator}
+          onSyncCloud={onSyncCloud}
         />
       </section>
     </div>

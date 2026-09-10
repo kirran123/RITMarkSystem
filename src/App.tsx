@@ -70,7 +70,7 @@ export const App: React.FC = () => {
       if (user?.email) {
         // Sync any pending local records to Convex cloud
         await syncLocalHistoryToConvex(user);
-        const records = await getCalculationHistory(user.email);
+        const records = await getCalculationHistory(user.email, user.role);
         setHistory(records);
       } else {
         setHistory([]);
@@ -79,20 +79,23 @@ export const App: React.FC = () => {
     fetchHistory();
   }, [user, currentTab]);
 
-  // Real-time synchronization across multiple browser tabs
+  // Real-time synchronization across multiple browser tabs and devices
   useEffect(() => {
     const handleSyncOnFocus = async () => {
       if (user?.email) {
-        const records = await getCalculationHistory(user.email);
+        const records = await getCalculationHistory(user.email, user.role);
         setHistory(records);
       }
     };
 
     window.addEventListener('focus', handleSyncOnFocus);
     window.addEventListener('storage', handleSyncOnFocus);
+    // Poll every 3 seconds so open tabs receive updates in near real-time
+    const interval = setInterval(handleSyncOnFocus, 3000);
     return () => {
       window.removeEventListener('focus', handleSyncOnFocus);
       window.removeEventListener('storage', handleSyncOnFocus);
+      clearInterval(interval);
     };
   }, [user]);
 
@@ -152,7 +155,7 @@ export const App: React.FC = () => {
   const handleClearAll = async () => {
     if (!user) return;
     if (window.confirm('Are you sure you want to clear all your calculation history?')) {
-      await clearAllHistory(user.email);
+      await clearAllHistory(user.email, user.role);
       setHistory([]);
       showToast('All history records cleared.', 'info');
     }
@@ -163,7 +166,7 @@ export const App: React.FC = () => {
     if (!user) return;
     showToast('Syncing calculation history with Convex Cloud...', 'info');
     const migrated = await syncLocalHistoryToConvex(user);
-    const refreshed = await getCalculationHistory(user.email);
+    const refreshed = await getCalculationHistory(user.email, user.role);
     setHistory(refreshed);
     if (migrated > 0) {
       showToast(`Migrated ${migrated} calculation(s) to Convex Cloud!`, 'success');
@@ -313,6 +316,7 @@ export const App: React.FC = () => {
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
             onReloadToCalculator={handleReloadToCalculator}
+            onSyncCloud={handleSyncCloud}
             onAddDepartment={handleAddDepartment}
             onUpdateDepartment={handleUpdateDepartment}
             onDeleteDepartment={handleDeleteDepartment}

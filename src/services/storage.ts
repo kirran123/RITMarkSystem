@@ -41,26 +41,46 @@ export const DEFAULT_STAFF: StaffMember[] = [
 
 // ==================== CALCULATION HISTORY ====================
 
-export async function getCalculationHistory(userEmail: string): Promise<HistoryRecord[]> {
+export async function getCalculationHistory(userEmail: string, role?: string): Promise<HistoryRecord[]> {
   const email = userEmail.trim().toLowerCase();
+  const isAdmin = role === 'admin' || email === 'kirranvijay@gmail.com' || email === 'ritdeptit@gmail.com';
 
   if (convexClient) {
     try {
       // @ts-ignore
-      const records = await convexClient.query('calculations:getHistoryByUser', { userEmail: email });
+      const records = await convexClient.query('calculations:getHistoryByUser', {
+        userEmail: email,
+        isAdmin,
+      });
       if (Array.isArray(records)) {
-        const formatted = records.map((r: any) => ({
+        const formatted: HistoryRecord[] = records.map((r: any) => ({
           ...r,
           id: r._id || r.id,
-          candidateName: r.candidateName || r.userName || 'Anonymous',
+          candidateName: (r.candidateName || r.userName || 'Anonymous').trim(),
+          userName: r.userName || 'Faculty Member',
+          userEmail: r.userEmail || email,
+          semester: r.semester || 'Mark Calculation',
+          subjectCount: Number(r.subjectCount || (r.subjects ? r.subjects.length : 0)),
+          subjects: (r.subjects || []).map((s: any, idx: number) => ({
+            id: s.id ?? idx + 1,
+            code: s.code || `${idx + 1}`,
+            name: s.name || `Subject ${idx + 1}`,
+            grade: s.grade || 'A+',
+            gradePoint: Number(s.gradePoint ?? 0),
+            mark: Number(s.mark ?? 0),
+            credits: Number(s.credits ?? 0),
+          })),
+          totalMarks: Number(r.totalMarks || 0),
+          maxMarks: Number(r.maxMarks || 100),
+          percentage: Number(r.percentage || 0),
+          cgpa: Number(r.cgpa || 0),
+          classification: r.classification || '',
+          timestamp: Number(r.timestamp || r._creationTime || Date.now()),
         }));
 
         // Update localStorage as a resilient offline cache
         try {
-          const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-          const localAll: HistoryRecord[] = raw ? JSON.parse(raw) : [];
-          const otherUsers = localAll.filter((rec) => rec.userEmail && rec.userEmail.toLowerCase() !== email);
-          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify([...formatted, ...otherUsers]));
+          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(formatted));
         } catch {}
 
         return formatted;
@@ -74,9 +94,12 @@ export async function getCalculationHistory(userEmail: string): Promise<HistoryR
     const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
     if (!raw) return [];
     const all: HistoryRecord[] = JSON.parse(raw);
+    if (isAdmin) {
+      return all.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    }
     return all
-      .filter((rec) => rec.userEmail && rec.userEmail.toLowerCase() === email)
-      .sort((a, b) => b.timestamp - a.timestamp);
+      .filter((rec) => !rec.userEmail || rec.userEmail.toLowerCase() === email)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   } catch (e) {
     console.error('Failed to read calculation history from localStorage', e);
     return [];
@@ -89,39 +112,47 @@ export async function saveCalculationRecord(
   semester: string = 'Mark Calculation'
 ): Promise<HistoryRecord> {
   const email = user.email.trim().toLowerCase();
-  let serverId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const timestamp = Date.now();
+  let serverId = `rec_${timestamp}_${Math.random().toString(36).substring(2, 7)}`;
 
   const cleanSubjects = (calc.subjects || []).map((s, idx) => ({
-    id: s.id ?? idx + 1,
-    code: s.code || '',
-    name: s.name || `Subject ${idx + 1}`,
-    grade: s.grade,
-    gradePoint: Number(s.gradePoint || 0),
-    mark: Number(s.mark || 0),
-    credits: Number(s.credits || 3),
+    id: typeof s.id === 'number' ? s.id : idx + 1,
+    code: String(s.code || `${idx + 1}`),
+    name: String(s.name || `Subject ${idx + 1}`),
+    grade: String(s.grade || 'A+').toUpperCase(),
+    gradePoint: Number(s.gradePoint ?? 0),
+    mark: Number(s.mark ?? 0),
+    credits: Number(s.credits ?? 0),
   }));
+
+  const totalMarks = Number(calc.totalMarks ?? 0);
+  const maxMarks = Number(calc.maxMarks ?? cleanSubjects.length * 100);
+  const percentage = Number(calc.percentage ?? 0);
+  const cgpa = Number(calc.cgpa ?? 0);
+  const candidateName = (calc.candidateName || user.name || 'Anonymous').trim();
 
   if (convexClient) {
     try {
       // @ts-ignore
-      const res = await convexClient.mutation('calculations:saveCalculation', {
+      const res: any = await convexClient.mutation('calculations:saveCalculation', {
         userEmail: email,
-        userName: user.name,
-        candidateName: calc.candidateName || user.name || 'Anonymous',
-        semester,
-        subjectCount: calc.subjectCount,
+        userName: user.name || 'Faculty Member',
+        candidateName,
+        semester: semester || 'Mark Calculation',
+        subjectCount: cleanSubjects.length,
         subjects: cleanSubjects,
-        totalMarks: calc.totalMarks,
-        maxMarks: calc.maxMarks,
-        percentage: calc.percentage,
-        cgpa: calc.cgpa,
-        classification: calc.classification,
+        totalMarks,
+        maxMarks,
+        percentage,
+        cgpa,
+        classification: calc.classification || '',
+        timestamp,
       });
       if (res?.id) {
         serverId = res.id;
       }
     } catch (err) {
-      console.warn('Convex save mutation deferred:', err);
+      console.error('CRITICAL: Convex saveCalculation error:', err);
     }
   }
 
@@ -130,10 +161,15 @@ export async function saveCalculationRecord(
     id: serverId,
     userEmail: email,
     userName: user.name,
-    candidateName: calc.candidateName || user.name || 'Anonymous',
-    semester,
-    timestamp: Date.now(),
+    candidateName,
+    semester: semester || 'Mark Calculation',
+    timestamp,
     subjects: cleanSubjects,
+    totalMarks,
+    maxMarks,
+    percentage,
+    cgpa,
+    classification: calc.classification || '',
   };
 
   try {
@@ -172,15 +208,20 @@ export async function deleteCalculationRecord(recordId: string): Promise<boolean
   return true;
 }
 
-export async function clearAllHistory(userEmail: string): Promise<boolean> {
+export async function clearAllHistory(userEmail: string, role?: string): Promise<boolean> {
   const email = userEmail.trim().toLowerCase();
+  const isAdmin = role === 'admin' || email === 'kirranvijay@gmail.com' || email === 'ritdeptit@gmail.com';
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
     if (raw) {
-      const all: HistoryRecord[] = JSON.parse(raw);
-      const filtered = all.filter((r) => !r.userEmail || r.userEmail.toLowerCase() !== email);
-      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
+      if (isAdmin) {
+        localStorage.removeItem(STORAGE_KEY_HISTORY);
+      } else {
+        const all: HistoryRecord[] = JSON.parse(raw);
+        const filtered = all.filter((r) => r.userEmail && r.userEmail.toLowerCase() !== email);
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
+      }
     }
   } catch (e) {
     console.error('Failed to clear history', e);
@@ -189,7 +230,10 @@ export async function clearAllHistory(userEmail: string): Promise<boolean> {
   if (convexClient) {
     try {
       // @ts-ignore
-      await convexClient.mutation('calculations:clearHistoryByUser', { userEmail: email });
+      await convexClient.mutation('calculations:clearHistoryByUser', {
+        userEmail: email,
+        isAdmin,
+      });
     } catch (err) {
       console.warn('Convex clear failed:', err);
     }
@@ -200,44 +244,71 @@ export async function clearAllHistory(userEmail: string): Promise<boolean> {
 
 /**
  * Automatically migrate and sync any unsaved local calculation records to Convex cloud
+ * Scans all historical localStorage keys to ensure complete migration.
  */
 export async function syncLocalHistoryToConvex(user: UserSession): Promise<number> {
   if (!convexClient || !user?.email) return 0;
 
   const email = user.email.trim().toLowerCase();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-    if (!raw) return 0;
-    const all: HistoryRecord[] = JSON.parse(raw);
-    if (!Array.isArray(all) || all.length === 0) return 0;
+  const isAdmin = user.role === 'admin' || email === 'kirranvijay@gmail.com' || email === 'ritdeptit@gmail.com';
 
-    // Any record that belongs to this user or is unassigned
-    const userLocalRecords = all.filter(
-      (r) => !r.userEmail || r.userEmail.toLowerCase() === email
-    );
+  try {
+    const historyKeys = ['rit_mark_history_v2', 'rit_mark_history', 'rit_history_v2', 'rit_history', 'rit_mark_history_v1'];
+    const collected: any[] = [];
+    const seenIds = new Set<string>();
+
+    for (const key of historyKeys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            for (const item of list) {
+              const dedupeKey = item.id || `${item.timestamp}_${item.candidateName}`;
+              if (!seenIds.has(dedupeKey)) {
+                seenIds.add(dedupeKey);
+                collected.push(item);
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (collected.length === 0) return 0;
+
+    // Filter to records that belong to this user or are unassigned (or all if admin)
+    const userLocalRecords = collected.filter((r) => {
+      if (isAdmin) return true;
+      if (!r.userEmail) return true;
+      return r.userEmail.toLowerCase() === email;
+    });
 
     if (userLocalRecords.length === 0) return 0;
 
     const formattedRecords = userLocalRecords.map((rec) => {
-      const cleanSubjects = (rec.subjects || []).map((s, idx) => ({
-        id: s.id ?? idx + 1,
-        code: s.code || '',
-        name: s.name || `Subject ${idx + 1}`,
-        grade: s.grade || 'A',
+      const cleanSubjects = (rec.subjects || []).map((s: any, idx: number) => ({
+        id: typeof s.id === 'number' ? s.id : idx + 1,
+        code: String(s.code || `${idx + 1}`),
+        name: String(s.name || `Subject ${idx + 1}`),
+        grade: String(s.grade || 'A+').toUpperCase(),
         gradePoint: Number(s.gradePoint ?? 8),
         mark: Number(s.mark ?? 80),
-        credits: Number(s.credits ?? 3),
+        credits: Number(s.credits ?? 0),
       }));
 
+      const candName = (rec.candidateName || user.name || 'Anonymous').trim();
+      const recEmail = (rec.userEmail ? rec.userEmail.trim().toLowerCase() : email);
+
       return {
-        userEmail: email,
+        userEmail: recEmail,
         userName: rec.userName || user.name,
-        candidateName: rec.candidateName || user.name || 'Anonymous',
+        candidateName: candName,
         semester: rec.semester || 'Mark Calculation',
         subjectCount: rec.subjectCount || cleanSubjects.length,
         subjects: cleanSubjects,
         totalMarks: Number(rec.totalMarks || 0),
-        maxMarks: Number(rec.maxMarks || (cleanSubjects.length * 100)),
+        maxMarks: Number(rec.maxMarks || cleanSubjects.length * 100),
         percentage: Number(rec.percentage || 0),
         cgpa: Number(rec.cgpa || 0),
         classification: rec.classification || '',
@@ -246,13 +317,13 @@ export async function syncLocalHistoryToConvex(user: UserSession): Promise<numbe
     });
 
     // @ts-ignore
-    const res = await convexClient.mutation('calculations:migrateBatchCalculations', {
+    const res: any = await convexClient.mutation('calculations:migrateBatchCalculations', {
       records: formattedRecords,
     });
 
     return res?.count || 0;
   } catch (err) {
-    console.warn('Sync local history to Convex error:', err);
+    console.error('Sync local history to Convex error:', err);
     return 0;
   }
 }
