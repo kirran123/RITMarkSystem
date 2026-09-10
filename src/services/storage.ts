@@ -452,7 +452,7 @@ export function getStoredDepartments(): DepartmentItem[] {
       return DEFAULT_DEPARTMENTS;
     }
     const parsed: DepartmentItem[] = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length < 10 || !parsed.some((d) => d.code === 'AIML') || !parsed.some((d) => d.code === 'CYBER')) {
+    if (!Array.isArray(parsed) || parsed.length === 0) {
       localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
       return DEFAULT_DEPARTMENTS;
     }
@@ -471,7 +471,7 @@ export async function syncDepartmentsFromConvex(): Promise<DepartmentItem[]> {
       // @ts-ignore
       const result: any[] = await convexClient.query('admin:getDepartments');
       if (Array.isArray(result) && result.length > 0) {
-        const formatted: DepartmentItem[] = result.map((d: any) => ({
+        const fromConvex: DepartmentItem[] = result.map((d: any) => ({
           id: d._id || `dept_${d.code.toLowerCase()}`,
           code: d.code,
           name: d.name,
@@ -479,8 +479,23 @@ export async function syncDepartmentsFromConvex(): Promise<DepartmentItem[]> {
           email: d.email,
           status: d.status || 'Active',
         }));
-        localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(formatted));
-        return formatted;
+
+        // Merge: update matching departments in the full local list.
+        // Do NOT replace entirely — Convex may only have partially synced departments.
+        const local = getStoredDepartments();
+        const merged = local.map((localDept) => {
+          const convexMatch = fromConvex.find((c) => c.code === localDept.code || c.id === localDept.id);
+          return convexMatch ? { ...localDept, ...convexMatch } : localDept;
+        });
+        // Also add any departments in Convex that don't exist locally
+        fromConvex.forEach((c) => {
+          if (!merged.find((m) => m.code === c.code)) {
+            merged.push(c);
+          }
+        });
+
+        localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(merged));
+        return merged;
       }
     } catch (err) {
       console.warn('Convex departments sync deferred:', err);
