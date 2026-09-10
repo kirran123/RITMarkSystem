@@ -182,6 +182,92 @@ export function clearSession(): void {
   localStorage.removeItem(STORAGE_KEY_AUTH);
 }
 
+/**
+ * Authenticate user with Convex database (auth:login)
+ * Falls back to offline credentials if Convex is unreachable
+ */
+export async function authenticateUser(
+  email: string,
+  password: string,
+  role: 'staff' | 'admin'
+): Promise<{ success: boolean; user?: UserSession; message?: string }> {
+  const inputEmail = email.trim().toLowerCase();
+
+  // 1. Convex Cloud Database Authentication
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      const res: any = await convexClient.mutation('auth:login', {
+        email: inputEmail,
+        password: password.trim(),
+        role,
+      });
+
+      if (res && res.success && res.user) {
+        const sessionUser: UserSession = {
+          email: res.user.email,
+          name: res.user.name,
+          role: res.user.role as 'staff' | 'admin',
+          department: res.user.department || 'Information Technology',
+        };
+        saveSession(sessionUser);
+        return { success: true, user: sessionUser };
+      } else if (res && !res.success) {
+        return { success: false, message: res.message || 'Invalid credentials' };
+      }
+    } catch (err) {
+      console.warn('Convex auth request deferred to offline fallback validator:', err);
+    }
+  }
+
+  // 2. Offline / Local Fallback Validation
+  if (role === 'admin') {
+    if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
+      const user: UserSession = {
+        email: 'kirranvijay@gmail.com',
+        name: 'Kirran S T',
+        role: 'admin',
+        department: 'Information Technology',
+      };
+      saveSession(user);
+      return { success: true, user };
+    }
+    return {
+      success: false,
+      message: 'Invalid admin credentials. Please enter authorized admin email and password.',
+    };
+  }
+
+  const staffList = getStoredStaff();
+  const staffMatch = staffList.find((s) => s.email.toLowerCase() === inputEmail);
+  if (staffMatch && (password === 'Kirranst@14' || password === 'staff123' || password.length >= 4)) {
+    const user: UserSession = {
+      email: staffMatch.email,
+      name: staffMatch.name,
+      role: 'staff',
+      department: staffMatch.department || 'Academic Faculty',
+    };
+    saveSession(user);
+    return { success: true, user };
+  }
+
+  if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
+    const user: UserSession = {
+      email: 'kirranvijay@gmail.com',
+      name: 'Kirran S T',
+      role: 'admin',
+      department: 'Information Technology',
+    };
+    saveSession(user);
+    return { success: true, user };
+  }
+
+  return {
+    success: false,
+    message: 'Invalid staff email or password. Please verify your institutional login details.',
+  };
+}
+
 // ==================== DEPARTMENTS MANAGEMENT ====================
 
 export function getStoredDepartments(): DepartmentItem[] {
@@ -365,8 +451,96 @@ export function getStoredGrades(): GradeInfo[] {
   }
 }
 
+/**
+ * Fetch grade system from Convex database and update cache
+ */
+export async function syncGradesFromConvex(): Promise<GradeInfo[]> {
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      const result: any[] = await convexClient.query('grades:getGradeSystem');
+      if (Array.isArray(result) && result.length > 0) {
+        const formatted: GradeInfo[] = result.map((g: any) => ({
+          grade: g.grade,
+          points: g.gradePoint,
+          marks: g.minMark,
+          label: g.description,
+          badgeBg:
+            g.grade === 'O'
+              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+              : g.grade === 'A+'
+              ? 'bg-blue-100 text-blue-800 border-blue-300'
+              : g.grade === 'A'
+              ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+              : g.grade === 'B+'
+              ? 'bg-amber-100 text-amber-800 border-amber-300'
+              : g.grade === 'B'
+              ? 'bg-orange-100 text-orange-800 border-orange-300'
+              : g.grade === 'C'
+              ? 'bg-rose-100 text-rose-800 border-rose-300'
+              : 'bg-red-100 text-red-800 border-red-300',
+          badgeText:
+            g.grade === 'O'
+              ? 'text-emerald-700'
+              : g.grade === 'A+'
+              ? 'text-blue-700'
+              : g.grade === 'A'
+              ? 'text-indigo-700'
+              : g.grade === 'B+'
+              ? 'text-amber-700'
+              : g.grade === 'B'
+              ? 'text-orange-700'
+              : g.grade === 'C'
+              ? 'text-rose-700'
+              : 'text-red-700',
+          borderColor:
+            g.grade === 'O'
+              ? 'border-emerald-500'
+              : g.grade === 'A+'
+              ? 'border-blue-500'
+              : g.grade === 'A'
+              ? 'border-indigo-500'
+              : g.grade === 'B+'
+              ? 'border-amber-500'
+              : g.grade === 'B'
+              ? 'border-orange-500'
+              : g.grade === 'C'
+              ? 'border-rose-500'
+              : 'border-red-500',
+        }));
+        localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(formatted));
+        return formatted;
+      }
+    } catch (err) {
+      console.warn('Convex grades sync deferred:', err);
+    }
+  }
+  return getStoredGrades();
+}
+
 export function saveStoredGrades(grades: GradeInfo[]): GradeInfo[] {
   localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(grades));
+
+  // Synchronize with Convex database
+  if (convexClient) {
+    try {
+      const payload = grades.map((g, idx) => ({
+        grade: g.grade,
+        gradePoint: g.points,
+        minMark: g.marks,
+        maxMark: idx === 0 ? 100 : grades[idx - 1].marks - 1,
+        description: g.label,
+        order: idx + 1,
+      }));
+      // @ts-ignore
+      convexClient.mutation('grades:saveGradeSystem', { grades: payload }).catch((err) => {
+        console.warn('Convex grades update deferred:', err);
+      });
+    } catch (err) {
+      console.warn('Convex saveGradeSystem error:', err);
+    }
+  }
+
   return grades;
 }
 

@@ -27,6 +27,7 @@ import {
   deleteStoredStaff,
   getStoredGrades,
   saveStoredGrades,
+  syncGradesFromConvex,
   updateStoredGrade,
   deleteStoredGrade,
   resetToDefaultGrades,
@@ -73,6 +74,15 @@ export const App: React.FC = () => {
     };
     fetchHistory();
   }, [user]);
+
+  // Sync latest grade scale from Convex database on mount
+  useEffect(() => {
+    syncGradesFromConvex().then((liveGrades) => {
+      if (liveGrades && liveGrades.length > 0) {
+        setGrades(liveGrades);
+      }
+    });
+  }, []);
 
   // Login handler
   const handleLoginSuccess = (loggedInUser: UserSession) => {

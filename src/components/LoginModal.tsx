@@ -11,7 +11,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
-import { getStoredStaff } from '../services/storage';
+import { getStoredStaff, authenticateUser } from '../services/storage';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -28,62 +28,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    const inputEmail = email.trim().toLowerCase();
-    const staffList = getStoredStaff();
-    const staffMatch = staffList.find((s) => s.email.toLowerCase() === inputEmail);
-
-    setTimeout(() => {
+    try {
+      const result = await authenticateUser(email, password, role);
       setIsLoading(false);
-      // 1. Admin Login
-      if (role === 'admin') {
-        if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
-          const user: UserSession = {
-            email: 'kirranvijay@gmail.com',
-            name: 'Kirran S T',
-            role: 'admin',
-            department: 'Information Technology',
-          };
-          onLoginSuccess(user);
-          onClose();
-          return;
-        }
-        setError('Invalid admin credentials. Please enter authorized admin email and password.');
-        return;
-      }
-
-      // 2. Staff Login (Authorized staff member)
-      if (staffMatch && (password === 'Kirranst@14' || password === 'staff123' || password.length >= 4)) {
-        const user: UserSession = {
-          email: staffMatch.email,
-          name: staffMatch.name,
-          role: 'staff',
-          department: staffMatch.department || 'Academic Faculty',
-        };
-        onLoginSuccess(user);
+      if (result.success && result.user) {
+        onLoginSuccess(result.user);
         onClose();
-        return;
+      } else {
+        setError(result.message || 'Invalid email or password. Please verify your institutional login details.');
       }
-
-      // Fallback: If admin credentials were typed while Staff was selected, log in as admin
-      if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
-        const user: UserSession = {
-          email: 'kirranvijay@gmail.com',
-          name: 'Kirran S T',
-          role: 'admin',
-          department: 'Information Technology',
-        };
-        onLoginSuccess(user);
-        onClose();
-        return;
-      }
-
-      setError('Invalid staff email or password. Please verify your institutional login details.');
-    }, 400);
+    } catch (err: any) {
+      setIsLoading(false);
+      setError(err?.message || 'Authentication failed. Please verify your connection and try again.');
+    }
   };
 
   return (

@@ -39,6 +39,19 @@ export default defineSchema({
     .index("by_userEmail", ["userEmail"])
     .index("by_timestamp", ["timestamp"]),
 
+  // Grade System scale (Letters, Grade Points, Marks, and Descriptions)
+  gradeSystem: defineTable({
+    grade: v.string(), // "O", "A+", "A", "B+", "B", "C", "U"
+    gradePoint: v.number(),
+    minMark: v.number(),
+    maxMark: v.number(),
+    description: v.string(),
+    order: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_order", ["order"])
+    .index("by_grade", ["grade"]),
+
   // Departments
   departments: defineTable({
     code: v.string(),
@@ -53,6 +66,7 @@ export default defineSchema({
     staffId: v.string(),
     name: v.string(),
     email: v.string(),
+    password: v.optional(v.string()),
     department: v.string(),
     designation: v.string(),
     canCalculate: v.boolean(),
