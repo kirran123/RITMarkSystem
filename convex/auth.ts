@@ -1,14 +1,23 @@
-﻿import { mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Verified master admin credentials
-const MASTER_ADMIN = {
-  email: "kirranvijay@gmail.com",
-  password: "Kirranst@14",
-  name: "Kirran S T",
-  role: "admin",
-  department: "Information Technology",
-};
+const MASTER_ADMINS = [
+  {
+    email: "kirranvijay@gmail.com",
+    password: "Kirranst@14",
+    name: "Kirran S T",
+    role: "admin",
+    department: "Information Technology",
+  },
+  {
+    email: "ritdeptit@gmail.com",
+    password: "Kirranst@14",
+    name: "RIT IT Department Admin",
+    role: "admin",
+    department: "Information Technology",
+  },
+];
 
 // Initial authorized faculty/staff accounts
 const INITIAL_STAFF = [
@@ -52,17 +61,19 @@ const INITIAL_STAFF = [
 export const seedInitialUsers = mutation({
   args: {},
   handler: async (ctx) => {
-    // 1. Ensure master admin exists
-    const admin = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", MASTER_ADMIN.email))
-      .first();
+    // 1. Ensure master admins exist
+    for (const admin of MASTER_ADMINS) {
+      const existing = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", admin.email))
+        .first();
 
-    if (!admin) {
-      await ctx.db.insert("users", {
-        ...MASTER_ADMIN,
-        createdAt: Date.now(),
-      });
+      if (!existing) {
+        await ctx.db.insert("users", {
+          ...admin,
+          createdAt: Date.now(),
+        });
+      }
     }
 
     // 2. Ensure initial staff exist
@@ -98,22 +109,34 @@ export const login = mutation({
     const password = args.password.trim();
     const requestedRole = args.role.toLowerCase();
 
-    // Auto-seed admin and staff if users table is empty
-    let adminRecord = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", MASTER_ADMIN.email))
-      .first();
+    // Auto-seed master admins and staff if not present
+    for (const admin of MASTER_ADMINS) {
+      const existing = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", admin.email))
+        .first();
 
-    if (!adminRecord) {
-      await ctx.db.insert("users", {
-        ...MASTER_ADMIN,
-        createdAt: Date.now(),
-      });
-      for (const s of INITIAL_STAFF) {
+      if (!existing) {
         await ctx.db.insert("users", {
-          ...s,
+          ...admin,
           createdAt: Date.now(),
         });
+      }
+    }
+
+    const anyStaff = await ctx.db.query("users").first();
+    if (anyStaff) {
+      for (const s of INITIAL_STAFF) {
+        const staffExists = await ctx.db
+          .query("users")
+          .withIndex("by_email", (q) => q.eq("email", s.email))
+          .first();
+        if (!staffExists) {
+          await ctx.db.insert("users", {
+            ...s,
+            createdAt: Date.now(),
+          });
+        }
       }
     }
 

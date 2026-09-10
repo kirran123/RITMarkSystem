@@ -221,11 +221,15 @@ export async function authenticateUser(
   }
 
   // 2. Offline / Local Fallback Validation
+  const isMasterAdmin =
+    (inputEmail === 'kirranvijay@gmail.com' || inputEmail === 'ritdeptit@gmail.com') &&
+    password === 'Kirranst@14';
+
   if (role === 'admin') {
-    if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
+    if (isMasterAdmin) {
       const user: UserSession = {
-        email: 'kirranvijay@gmail.com',
-        name: 'Kirran S T',
+        email: inputEmail,
+        name: inputEmail === 'ritdeptit@gmail.com' ? 'RIT IT Department Admin' : 'Kirran S T',
         role: 'admin',
         department: 'Information Technology',
       };
@@ -251,10 +255,10 @@ export async function authenticateUser(
     return { success: true, user };
   }
 
-  if (inputEmail === 'kirranvijay@gmail.com' && password === 'Kirranst@14') {
+  if (isMasterAdmin) {
     const user: UserSession = {
-      email: 'kirranvijay@gmail.com',
-      name: 'Kirran S T',
+      email: inputEmail,
+      name: inputEmail === 'ritdeptit@gmail.com' ? 'RIT IT Department Admin' : 'Kirran S T',
       role: 'admin',
       department: 'Information Technology',
     };
