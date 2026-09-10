@@ -379,12 +379,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
               {saveSuccess ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-white" />
-                  <span>Saved to Convex Cloud History!</span>
+                  <span>Saved to History!</span>
                 </>
               ) : (
                 <>
                   <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{isSaving ? 'Saving to Convex Cloud...' : user ? 'Save to History (Convex Cloud)' : 'Sign In to Save to Cloud'}</span>
+                  <span>{isSaving ? 'Saving...' : user ? 'Save to History' : 'Sign In to Save'}</span>
                 </>
               )}
             </button>

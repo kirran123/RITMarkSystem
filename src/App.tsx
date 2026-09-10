@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserSession, HistoryRecord, CalculationResult, DepartmentItem, StaffMember, GradeInfo } from './types';
 import { Navbar } from './components/Navbar';
 import { PublicLanding } from './components/PublicLanding';
@@ -56,6 +56,9 @@ export const App: React.FC = () => {
   const [grades, setGrades] = useState<GradeInfo[]>(() => getStoredGrades());
   const gradeMap = buildGradeMap(grades);
 
+  // Track deleted record IDs so polling never re-adds them from Convex
+  const deletedIds = useRef<Set<string>>(new Set());
+
   // Show toast notification
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -84,14 +87,15 @@ export const App: React.FC = () => {
     const handleSyncOnFocus = async () => {
       if (user?.email) {
         const records = await getCalculationHistory(user.email, user.role);
-        setHistory(records);
+        // Filter out any records the user deleted in this session
+        setHistory(records.filter((r) => !deletedIds.current.has(r.id)));
       }
     };
 
     window.addEventListener('focus', handleSyncOnFocus);
     window.addEventListener('storage', handleSyncOnFocus);
-    // Poll every 3 seconds so open tabs receive updates in near real-time
-    const interval = setInterval(handleSyncOnFocus, 3000);
+    // Poll every 5 seconds so open tabs receive updates in near real-time
+    const interval = setInterval(handleSyncOnFocus, 5000);
     return () => {
       window.removeEventListener('focus', handleSyncOnFocus);
       window.removeEventListener('storage', handleSyncOnFocus);
@@ -141,14 +145,18 @@ export const App: React.FC = () => {
     if (!user) return;
     const record = await saveCalculationRecord(user, calc, semester);
     setHistory((prev) => [record, ...prev]);
-    showToast('Calculation saved to Convex cloud history!', 'success');
+    showToast('Calculation saved to history!', 'success');
   };
 
   // Delete single record handler
   const handleDeleteRecord = async (recordId: string) => {
-    await deleteCalculationRecord(recordId);
+    // Track this ID immediately so polling won't re-add it
+    deletedIds.current.add(recordId);
+    // Remove from UI instantly
     setHistory((prev) => prev.filter((r) => r.id !== recordId));
-    showToast('Record removed from history.', 'info');
+    // Delete from Convex + localStorage
+    await deleteCalculationRecord(recordId);
+    showToast('Record deleted.', 'info');
   };
 
   // Clear all history handler
@@ -164,14 +172,14 @@ export const App: React.FC = () => {
   // Cloud Sync Handler
   const handleSyncCloud = async () => {
     if (!user) return;
-    showToast('Syncing calculation history with Convex Cloud...', 'info');
+    showToast('Syncing history...', 'info');
     const migrated = await syncLocalHistoryToConvex(user);
     const refreshed = await getCalculationHistory(user.email, user.role);
-    setHistory(refreshed);
+    setHistory(refreshed.filter((r) => !deletedIds.current.has(r.id)));
     if (migrated > 0) {
-      showToast(`Migrated ${migrated} calculation(s) to Convex Cloud!`, 'success');
+      showToast(`${migrated} record(s) synced to cloud!`, 'success');
     } else {
-      showToast(`All ${refreshed.length} records are synchronized with Convex Cloud.`, 'success');
+      showToast(`All ${refreshed.length} records are up to date.`, 'success');
     }
   };
 

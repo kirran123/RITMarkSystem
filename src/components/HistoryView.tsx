@@ -89,16 +89,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             <History className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-bold text-slate-900 font-['Outfit',sans-serif]">
                 Mark Calculation History Log
               </h2>
               <span className="px-2.5 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-full border border-blue-200">
                 {history.length} Saved Records
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Convex Cloud Synced</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -115,7 +111,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               className="px-3.5 py-2 text-xs font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-blue-700 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync with Convex Cloud'}</span>
+              <span>{isSyncing ? 'Syncing...' : 'Sync History'}</span>
             </button>
           )}
 
