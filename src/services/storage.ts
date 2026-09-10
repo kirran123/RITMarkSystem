@@ -292,6 +292,33 @@ export function getStoredDepartments(): DepartmentItem[] {
   }
 }
 
+/**
+ * Fetch latest departments from Convex database and update cache
+ */
+export async function syncDepartmentsFromConvex(): Promise<DepartmentItem[]> {
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      const result: any[] = await convexClient.query('admin:getDepartments');
+      if (Array.isArray(result) && result.length > 0) {
+        const formatted: DepartmentItem[] = result.map((d: any) => ({
+          id: d._id || `dept_${d.code.toLowerCase()}`,
+          code: d.code,
+          name: d.name,
+          hodName: d.hodName,
+          email: d.email,
+          status: d.status || 'Active',
+        }));
+        localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(formatted));
+        return formatted;
+      }
+    } catch (err) {
+      console.warn('Convex departments sync deferred:', err);
+    }
+  }
+  return getStoredDepartments();
+}
+
 export function resetToDefaultDepartments(): DepartmentItem[] {
   localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
   return DEFAULT_DEPARTMENTS;
@@ -305,23 +332,80 @@ export function saveNewDepartment(dept: Omit<DepartmentItem, 'id'>): DepartmentI
   };
   all.push(newItem);
   localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
+
+  // Sync to Convex storage
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      convexClient.mutation('admin:addDepartment', {
+        code: dept.code,
+        name: dept.name,
+        hodName: dept.hodName,
+        email: dept.email,
+        status: dept.status,
+      }).catch((err) => {
+        console.warn('Convex addDepartment deferred:', err);
+      });
+    } catch (err) {
+      console.warn('Convex addDepartment error:', err);
+    }
+  }
+
   return newItem;
 }
 
 export function updateStoredDepartment(id: string, updated: Partial<DepartmentItem>): DepartmentItem[] {
   const all = getStoredDepartments();
-  const index = all.findIndex((d) => d.id === id);
+  const index = all.findIndex((d) => d.id === id || (updated.code && d.code === updated.code));
   if (index !== -1) {
     all[index] = { ...all[index], ...updated };
     localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
+
+    // Sync updated department name, HOD name, HOD email with Convex storage
+    if (convexClient) {
+      const target = all[index];
+      try {
+        // @ts-ignore
+        convexClient.mutation('admin:updateDepartment', {
+          id: target.id.startsWith('j') ? target.id : undefined,
+          code: target.code,
+          name: target.name,
+          hodName: target.hodName,
+          email: target.email,
+          status: target.status,
+        }).catch((err) => {
+          console.warn('Convex department update deferred:', err);
+        });
+      } catch (err) {
+        console.warn('Convex department update error:', err);
+      }
+    }
   }
   return all;
 }
 
 export function deleteStoredDepartment(id: string): DepartmentItem[] {
-  const all = getStoredDepartments().filter((d) => d.id !== id);
-  localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
-  return all;
+  const all = getStoredDepartments();
+  const target = all.find((d) => d.id === id);
+  const filtered = all.filter((d) => d.id !== id);
+  localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(filtered));
+
+  // Sync deletion with Convex storage
+  if (convexClient && target) {
+    try {
+      // @ts-ignore
+      convexClient.mutation('admin:deleteDepartment', {
+        id: target.id.startsWith('j') ? target.id : undefined,
+        code: target.code,
+      }).catch((err) => {
+        console.warn('Convex deleteDepartment deferred:', err);
+      });
+    } catch (err) {
+      console.warn('Convex deleteDepartment error:', err);
+    }
+  }
+
+  return filtered;
 }
 
 // ==================== STAFF MANAGEMENT ====================

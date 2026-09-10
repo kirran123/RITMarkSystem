@@ -29,32 +29,77 @@ export const addDepartment = mutation({
 });
 
 /**
- * Update an existing department (HOD name, email, etc.)
+ * Update an existing department (HOD name, email, name, status)
+ * Matches by code or id to sync smoothly with Convex storage
  */
 export const updateDepartment = mutation({
   args: {
-    id: v.id("departments"),
+    id: v.optional(v.string()),
     code: v.string(),
-    name: v.string(),
+    name: v.optional(v.string()),
     hodName: v.string(),
     email: v.string(),
-    status: v.string(),
+    status: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { id, ...data } = args;
-    await ctx.db.patch(id, data);
-    return { success: true };
+    let dept = await ctx.db
+      .query("departments")
+      .withIndex("by_code", (q) => q.eq("code", args.code))
+      .first();
+
+    if (!dept && args.id) {
+      try {
+        dept = await ctx.db.get(args.id as any);
+      } catch {}
+    }
+
+    if (dept) {
+      await ctx.db.patch(dept._id, {
+        ...(args.name ? { name: args.name } : {}),
+        hodName: args.hodName,
+        email: args.email,
+        ...(args.status ? { status: args.status } : {}),
+      });
+      return { success: true, id: dept._id };
+    } else {
+      const id = await ctx.db.insert("departments", {
+        code: args.code,
+        name: args.name || args.code,
+        hodName: args.hodName,
+        email: args.email,
+        status: args.status || "Active",
+      });
+      return { success: true, id };
+    }
   },
 });
 
 /**
- * Delete a department
+ * Delete a department by code or id
  */
 export const deleteDepartment = mutation({
-  args: { id: v.id("departments") },
+  args: {
+    id: v.optional(v.string()),
+    code: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
-    return { success: true };
+    if (args.code) {
+      const dept = await ctx.db
+        .query("departments")
+        .withIndex("by_code", (q) => q.eq("code", args.code!))
+        .first();
+      if (dept) {
+        await ctx.db.delete(dept._id);
+        return { success: true };
+      }
+    }
+    if (args.id) {
+      try {
+        await ctx.db.delete(args.id as any);
+        return { success: true };
+      } catch {}
+    }
+    return { success: false };
   },
 });
 

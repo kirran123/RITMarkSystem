@@ -17,6 +17,7 @@ import {
   deleteCalculationRecord,
   clearAllHistory,
   getStoredDepartments,
+  syncDepartmentsFromConvex,
   resetToDefaultDepartments,
   saveNewDepartment,
   updateStoredDepartment,
@@ -75,11 +76,16 @@ export const App: React.FC = () => {
     fetchHistory();
   }, [user]);
 
-  // Sync latest grade scale from Convex database on mount
+  // Sync latest grade scale & departments from Convex database on mount
   useEffect(() => {
     syncGradesFromConvex().then((liveGrades) => {
       if (liveGrades && liveGrades.length > 0) {
         setGrades(liveGrades);
+      }
+    });
+    syncDepartmentsFromConvex().then((liveDepts) => {
+      if (liveDepts && liveDepts.length > 0) {
+        setDepartments(liveDepts);
       }
     });
   }, []);
