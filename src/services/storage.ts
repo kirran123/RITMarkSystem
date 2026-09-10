@@ -1,0 +1,394 @@
+import { HistoryRecord, CalculationResult, UserSession, DepartmentItem, StaffMember, GradeInfo } from '../types';
+import { ConvexHttpClient } from 'convex/browser';
+
+const STORAGE_KEY_HISTORY = 'rit_mark_history_v2';
+const STORAGE_KEY_AUTH = 'rit_auth_user_v2';
+const STORAGE_KEY_DEPTS = 'rit_depts_v3';
+const STORAGE_KEY_STAFF = 'rit_staff_v3';
+
+// Convex Client
+const convexUrl = import.meta.env.VITE_CONVEX_URL;
+let convexClient: ConvexHttpClient | null = null;
+
+if (convexUrl && convexUrl.startsWith('http')) {
+  try {
+    convexClient = new ConvexHttpClient(convexUrl);
+  } catch (err) {
+    console.warn('Convex client initialization skipped:', err);
+  }
+}
+
+// Initial Departments Seed - All 10 Official RIT Academic Departments
+export const DEFAULT_DEPARTMENTS: DepartmentItem[] = [
+  { id: 'dept_it', code: 'IT', name: 'Information Technology', hodName: 'Mariappan', email: 'mariappan@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_aids', code: 'AI&DS', name: 'Artificial Intelligence and Data Science', hodName: 'Kaliappan', email: 'kaliappan@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_aiml', code: 'AIML', name: 'Artificial Intelligence and Machine Learning', hodName: 'Kesavan', email: 'vtkesavan@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_civil', code: 'CIVIL', name: 'Civil Engineering', hodName: 'Meyyappan', email: 'meyyappan@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_csbs', code: 'CSBS', name: 'Computer Science and Business Systems', hodName: 'Gomathynayagam', email: 'gomathynayagam@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_cse', code: 'CSE', name: 'Computer Science and Engineering', hodName: 'Vijayalakshmi K', email: 'vijayalakshmik@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_eee', code: 'EEE', name: 'Electrical and Electronics Engineering', hodName: 'Kannan', email: 'kannan@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_ece', code: 'ECE', name: 'Electronics and Communication Engineering', hodName: 'Arunachala Perumal C', email: 'arunachalaperumal@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_mech', code: 'MECH', name: 'Mechanical Engineering', hodName: 'Suresh Kumar', email: 'sureshkumar@ritrjpm.ac.in', status: 'Active' },
+  { id: 'dept_cyber', code: 'CYBER', name: 'Cyber Security', hodName: 'Pending Appointment', email: 'cyberhod@rit.edu.in', status: 'Active' },
+];
+
+// Initial Staff Seed (No staffId, No department)
+export const DEFAULT_STAFF: StaffMember[] = [
+  { id: 'staff_1', name: 'Kirran S T', email: 'kirranvijay@gmail.com', designation: 'Assistant Professor & Admin', canCalculate: true, createdAt: Date.now() - 86400000 },
+  { id: 'staff_2', name: 'Mariappan', email: 'mariappan@ritrjpm.ac.in', designation: 'Professor & Head', canCalculate: true, createdAt: Date.now() - 172800000 },
+  { id: 'staff_3', name: 'Vijayalakshmi K', email: 'vijayalakshmik@ritrjpm.ac.in', designation: 'Professor & Head', canCalculate: true, createdAt: Date.now() - 259200000 },
+];
+
+// ==================== CALCULATION HISTORY ====================
+
+export async function getCalculationHistory(userEmail: string): Promise<HistoryRecord[]> {
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      const records = await convexClient.query('calculations:getHistoryByUser', { userEmail });
+      if (Array.isArray(records) && records.length > 0) {
+        return records.map((r: any) => ({ ...r, id: r._id || r.id }));
+      }
+    } catch (err) {
+      console.warn('Convex query fallback to localStorage:', err);
+    }
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (!raw) return [];
+    const all: HistoryRecord[] = JSON.parse(raw);
+    return all
+      .filter((rec) => rec.userEmail.toLowerCase() === userEmail.toLowerCase())
+      .sort((a, b) => b.timestamp - a.timestamp);
+  } catch (e) {
+    console.error('Failed to read calculation history from localStorage', e);
+    return [];
+  }
+}
+
+export async function saveCalculationRecord(
+  user: UserSession,
+  calc: CalculationResult,
+  semester: string = 'Mark Calculation'
+): Promise<HistoryRecord> {
+  const newRecord: HistoryRecord = {
+    ...calc,
+    id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    userEmail: user.email,
+    userName: user.name,
+    candidateName: calc.candidateName || user.name,
+    semester,
+    timestamp: Date.now(),
+  };
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    const all: HistoryRecord[] = raw ? JSON.parse(raw) : [];
+    all.unshift(newRecord);
+    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Error saving to localStorage', e);
+  }
+
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      await convexClient.mutation('calculations:saveCalculation', {
+        userEmail: user.email,
+        userName: user.name,
+        candidateName: calc.candidateName,
+        semester,
+        subjectCount: calc.subjectCount,
+        subjects: calc.subjects,
+        totalMarks: calc.totalMarks,
+        maxMarks: calc.maxMarks,
+        percentage: calc.percentage,
+        cgpa: calc.cgpa,
+        classification: calc.classification,
+      });
+    } catch (err) {
+      console.warn('Convex save mutation deferred:', err);
+    }
+  }
+
+  return newRecord;
+}
+
+export async function deleteCalculationRecord(recordId: string): Promise<boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (raw) {
+      const all: HistoryRecord[] = JSON.parse(raw);
+      const filtered = all.filter((r) => r.id !== recordId);
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
+    }
+  } catch (e) {
+    console.error('Failed to delete from localStorage', e);
+  }
+
+  if (convexClient && recordId.startsWith('k')) {
+    try {
+      // @ts-ignore
+      await convexClient.mutation('calculations:deleteCalculation', { id: recordId });
+    } catch (err) {
+      console.warn('Convex delete failed:', err);
+    }
+  }
+
+  return true;
+}
+
+export async function clearAllHistory(userEmail: string): Promise<boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (raw) {
+      const all: HistoryRecord[] = JSON.parse(raw);
+      const filtered = all.filter((r) => r.userEmail.toLowerCase() !== userEmail.toLowerCase());
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
+    }
+  } catch (e) {
+    console.error('Failed to clear history', e);
+  }
+
+  if (convexClient) {
+    try {
+      // @ts-ignore
+      await convexClient.mutation('calculations:clearHistoryByUser', { userEmail });
+    } catch (err) {
+      console.warn('Convex clear failed:', err);
+    }
+  }
+
+  return true;
+}
+
+// ==================== AUTH SESSION ====================
+
+export function getSavedSession(): UserSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_AUTH);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSession(user: UserSession): void {
+  localStorage.setItem(STORAGE_KEY_AUTH, JSON.stringify(user));
+}
+
+export function clearSession(): void {
+  localStorage.removeItem(STORAGE_KEY_AUTH);
+}
+
+// ==================== DEPARTMENTS MANAGEMENT ====================
+
+export function getStoredDepartments(): DepartmentItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DEPTS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
+      return DEFAULT_DEPARTMENTS;
+    }
+    const parsed: DepartmentItem[] = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length < 10 || !parsed.some((d) => d.code === 'AIML') || !parsed.some((d) => d.code === 'CYBER')) {
+      localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
+      return DEFAULT_DEPARTMENTS;
+    }
+    return parsed;
+  } catch {
+    return DEFAULT_DEPARTMENTS;
+  }
+}
+
+export function resetToDefaultDepartments(): DepartmentItem[] {
+  localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
+  return DEFAULT_DEPARTMENTS;
+}
+
+export function saveNewDepartment(dept: Omit<DepartmentItem, 'id'>): DepartmentItem {
+  const all = getStoredDepartments();
+  const newItem: DepartmentItem = {
+    ...dept,
+    id: `dept_${Date.now()}`,
+  };
+  all.push(newItem);
+  localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
+  return newItem;
+}
+
+export function updateStoredDepartment(id: string, updated: Partial<DepartmentItem>): DepartmentItem[] {
+  const all = getStoredDepartments();
+  const index = all.findIndex((d) => d.id === id);
+  if (index !== -1) {
+    all[index] = { ...all[index], ...updated };
+    localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
+  }
+  return all;
+}
+
+export function deleteStoredDepartment(id: string): DepartmentItem[] {
+  const all = getStoredDepartments().filter((d) => d.id !== id);
+  localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(all));
+  return all;
+}
+
+// ==================== STAFF MANAGEMENT ====================
+
+export function getStoredStaff(): StaffMember[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_STAFF);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(DEFAULT_STAFF));
+      return DEFAULT_STAFF;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_STAFF;
+  }
+}
+
+export function saveNewStaff(staff: Omit<StaffMember, 'id' | 'createdAt'>): StaffMember {
+  const all = getStoredStaff();
+  const newItem: StaffMember = {
+    ...staff,
+    id: `staff_${Date.now()}`,
+    createdAt: Date.now(),
+  };
+  all.push(newItem);
+  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
+  return newItem;
+}
+
+export function updateStoredStaff(id: string, updated: Partial<StaffMember>): StaffMember[] {
+  const all = getStoredStaff();
+  const index = all.findIndex((s) => s.id === id);
+  if (index !== -1) {
+    all[index] = { ...all[index], ...updated };
+    localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
+  }
+  return all;
+}
+
+export function deleteStoredStaff(id: string): StaffMember[] {
+  const all = getStoredStaff().filter((s) => s.id !== id);
+  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(all));
+  return all;
+}
+
+// ==================== GRADE & MARK SCHEME MANAGEMENT ====================
+
+const STORAGE_KEY_GRADES = 'rit_grade_config_v3';
+
+export const DEFAULT_GRADES: GradeInfo[] = [
+  {
+    grade: 'O',
+    points: 10,
+    marks: 100,
+    label: 'Outstanding Performance',
+    badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    badgeText: 'text-emerald-700',
+    borderColor: 'border-emerald-500',
+  },
+  {
+    grade: 'A+',
+    points: 9,
+    marks: 90,
+    label: 'Excellent Performance',
+    badgeBg: 'bg-blue-100 text-blue-800 border-blue-300',
+    badgeText: 'text-blue-700',
+    borderColor: 'border-blue-500',
+  },
+  {
+    grade: 'A',
+    points: 8,
+    marks: 80,
+    label: 'Very Good Performance',
+    badgeBg: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    badgeText: 'text-indigo-700',
+    borderColor: 'border-indigo-500',
+  },
+  {
+    grade: 'B+',
+    points: 7,
+    marks: 70,
+    label: 'Good Performance',
+    badgeBg: 'bg-amber-100 text-amber-800 border-amber-300',
+    badgeText: 'text-amber-700',
+    borderColor: 'border-amber-500',
+  },
+  {
+    grade: 'B',
+    points: 6,
+    marks: 60,
+    label: 'Above Average Performance',
+    badgeBg: 'bg-orange-100 text-orange-800 border-orange-300',
+    badgeText: 'text-orange-700',
+    borderColor: 'border-orange-500',
+  },
+  {
+    grade: 'C',
+    points: 5,
+    marks: 50,
+    label: 'Average / Satisfactory Performance',
+    badgeBg: 'bg-rose-100 text-rose-800 border-rose-300',
+    badgeText: 'text-rose-700',
+    borderColor: 'border-rose-500',
+  },
+  {
+    grade: 'U',
+    points: 0,
+    marks: 0,
+    label: 'Re-appear (Arrear)',
+    badgeBg: 'bg-red-100 text-red-800 border-red-300',
+    badgeText: 'text-red-700',
+    borderColor: 'border-red-500',
+  },
+];
+
+export function getStoredGrades(): GradeInfo[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_GRADES);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(DEFAULT_GRADES));
+      return DEFAULT_GRADES;
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(DEFAULT_GRADES));
+      return DEFAULT_GRADES;
+    }
+    return parsed;
+  } catch {
+    return DEFAULT_GRADES;
+  }
+}
+
+export function saveStoredGrades(grades: GradeInfo[]): GradeInfo[] {
+  localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(grades));
+  return grades;
+}
+
+export function updateStoredGrade(oldGradeKey: string, updated: GradeInfo): GradeInfo[] {
+  const current = getStoredGrades();
+  const index = current.findIndex((g) => g.grade.toLowerCase() === oldGradeKey.toLowerCase());
+  if (index !== -1) {
+    current[index] = updated;
+  } else {
+    current.push(updated);
+  }
+  return saveStoredGrades(current);
+}
+
+export function deleteStoredGrade(gradeKey: string): GradeInfo[] {
+  const current = getStoredGrades();
+  const filtered = current.filter((g) => g.grade.toLowerCase() !== gradeKey.toLowerCase());
+  return saveStoredGrades(filtered);
+}
+
+export function resetToDefaultGrades(): GradeInfo[] {
+  localStorage.setItem(STORAGE_KEY_GRADES, JSON.stringify(DEFAULT_GRADES));
+  return DEFAULT_GRADES;
+}
+
