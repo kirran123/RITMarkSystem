@@ -451,12 +451,26 @@ export function getStoredDepartments(): DepartmentItem[] {
       localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
       return DEFAULT_DEPARTMENTS;
     }
-    const parsed: DepartmentItem[] = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
+    const stored: DepartmentItem[] = JSON.parse(raw);
+    if (!Array.isArray(stored) || stored.length === 0) {
       localStorage.setItem(STORAGE_KEY_DEPTS, JSON.stringify(DEFAULT_DEPARTMENTS));
       return DEFAULT_DEPARTMENTS;
     }
-    return parsed;
+
+    // Always ensure all default departments exist.
+    // Apply stored overrides (HOD edits, etc.) on top of defaults.
+    const merged = DEFAULT_DEPARTMENTS.map((def) => {
+      const override = stored.find((s) => s.code === def.code);
+      return override ? { ...def, ...override } : def;
+    });
+    // Also keep any extra departments added by admin (not in defaults)
+    stored.forEach((s) => {
+      if (!merged.find((m) => m.code === s.code)) {
+        merged.push(s);
+      }
+    });
+
+    return merged;
   } catch {
     return DEFAULT_DEPARTMENTS;
   }
@@ -480,14 +494,13 @@ export async function syncDepartmentsFromConvex(): Promise<DepartmentItem[]> {
           status: d.status || 'Active',
         }));
 
-        // Merge: update matching departments in the full local list.
-        // Do NOT replace entirely — Convex may only have partially synced departments.
-        const local = getStoredDepartments();
-        const merged = local.map((localDept) => {
-          const convexMatch = fromConvex.find((c) => c.code === localDept.code || c.id === localDept.id);
-          return convexMatch ? { ...localDept, ...convexMatch } : localDept;
+        // Always start from DEFAULT_DEPARTMENTS so all 10 are present.
+        // Apply Convex overrides (HOD edits, etc.) on matching codes.
+        const merged = DEFAULT_DEPARTMENTS.map((def) => {
+          const convexMatch = fromConvex.find((c) => c.code === def.code);
+          return convexMatch ? { ...def, ...convexMatch } : def;
         });
-        // Also add any departments in Convex that don't exist locally
+        // Add any extra departments that exist in Convex but not in defaults
         fromConvex.forEach((c) => {
           if (!merged.find((m) => m.code === c.code)) {
             merged.push(c);
