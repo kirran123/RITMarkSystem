@@ -362,26 +362,28 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <span>Reset Grades</span>
             </button>
 
-            {user && (
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={isSaving}
-                className="w-full py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {saveSuccess ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Saved to Account History!</span>
-                  </>
-                ) : (
-                  <>
-                    <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{isSaving ? 'Saving...' : 'Save to History'}</span>
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className={`w-full py-2.5 px-4 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                saveSuccess
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
+              }`}
+            >
+              {saveSuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Saved to Convex Cloud History!</span>
+                </>
+              ) : (
+                <>
+                  <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{isSaving ? 'Saving to Convex Cloud...' : user ? 'Save to History (Convex Cloud)' : 'Sign In to Save to Cloud'}</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* 4. STUDENT DETAILS (OPTIONAL) (Default: Anonymous if empty) */}

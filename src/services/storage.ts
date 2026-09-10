@@ -7,7 +7,7 @@ const STORAGE_KEY_DEPTS = 'rit_depts_v3';
 const STORAGE_KEY_STAFF = 'rit_staff_v3';
 
 // Convex Client
-const convexUrl = import.meta.env.VITE_CONVEX_URL;
+const convexUrl = import.meta.env.VITE_CONVEX_URL || 'https://colorful-crab-153.convex.cloud';
 let convexClient: ConvexHttpClient | null = null;
 
 if (convexUrl && convexUrl.startsWith('http')) {

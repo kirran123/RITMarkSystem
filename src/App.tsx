@@ -121,7 +121,7 @@ export const App: React.FC = () => {
     if (!user) return;
     const record = await saveCalculationRecord(user, calc, semester);
     setHistory((prev) => [record, ...prev]);
-    showToast('Calculation saved to your account history!', 'success');
+    showToast('Calculation saved to Convex cloud history!', 'success');
   };
 
   // Delete single record handler
