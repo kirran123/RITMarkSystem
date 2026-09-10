@@ -6,8 +6,12 @@ const STORAGE_KEY_AUTH = 'rit_auth_user_v2';
 const STORAGE_KEY_DEPTS = 'rit_depts_v3';
 const STORAGE_KEY_STAFF = 'rit_staff_v3';
 
-// Convex Client
-const convexUrl = import.meta.env.VITE_CONVEX_URL || 'https://colorful-crab-153.convex.cloud';
+// Convex Client — uses VITE_CONVEX_URL set in Vercel environment variables,
+// falls back to production endpoint so the live site always writes to production cloud.
+const convexUrl =
+  import.meta.env.VITE_CONVEX_URL ||
+  'https://exuberant-lemur-499.convex.cloud'; // production Convex deployment
+
 let convexClient: ConvexHttpClient | null = null;
 
 if (convexUrl && convexUrl.startsWith('http')) {
