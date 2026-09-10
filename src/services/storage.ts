@@ -6,21 +6,18 @@ const STORAGE_KEY_AUTH = 'rit_auth_user_v2';
 const STORAGE_KEY_DEPTS = 'rit_depts_v3';
 const STORAGE_KEY_STAFF = 'rit_staff_v3';
 
-// Convex Client — uses VITE_CONVEX_URL baked in via .env.production at build time.
-// Falls back to the single Convex project URL so dev and prod share the same database.
-const convexUrl =
-  import.meta.env.VITE_CONVEX_URL ||
-  'https://exuberant-lemur-499.convex.cloud'; // Convex production environment
+// Convex production URL — hardcoded so Vercel's dashboard VITE_CONVEX_URL cannot override it.
+// colorful-crab-153 = DEV | exuberant-lemur-499 = PROD (live site must use PROD)
+const convexUrl = 'https://exuberant-lemur-499.convex.cloud';
 
 let convexClient: ConvexHttpClient | null = null;
 
-if (convexUrl && convexUrl.startsWith('http')) {
-  try {
-    convexClient = new ConvexHttpClient(convexUrl);
-  } catch (err) {
-    console.warn('Convex client initialization skipped:', err);
-  }
+try {
+  convexClient = new ConvexHttpClient(convexUrl);
+} catch (err) {
+  console.warn('Convex client initialization failed:', err);
 }
+
 
 // Initial Departments Seed - All 10 Official RIT Academic Departments
 export const DEFAULT_DEPARTMENTS: DepartmentItem[] = [
