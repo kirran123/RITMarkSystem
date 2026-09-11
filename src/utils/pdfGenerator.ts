@@ -130,6 +130,7 @@ export function generateGradeSheetPdf(options: GeneratePdfOptions): void {
       sub.name || `Subject ${idx + 1}`,
       info.grade,
       info.marks.toString(),
+      '100',
     ];
   });
 
@@ -143,6 +144,7 @@ export function generateGradeSheetPdf(options: GeneratePdfOptions): void {
         'Subject Description',
         'Grade',
         'Assigned Marks',
+        'Maximum Marks',
       ],
     ],
     body: tableRows,
@@ -160,11 +162,12 @@ export function generateGradeSheetPdf(options: GeneratePdfOptions): void {
       cellPadding: 2.2,
     },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 16 },
-      1: { halign: 'center', cellWidth: 32, fontStyle: 'bold' },
-      2: { halign: 'left', cellWidth: 80 },
-      3: { halign: 'center', cellWidth: 26, fontStyle: 'bold' },
-      4: { halign: 'center', cellWidth: 26, fontStyle: 'bold' },
+      0: { halign: 'center', cellWidth: 14 },
+      1: { halign: 'center', cellWidth: 28, fontStyle: 'bold' },
+      2: { halign: 'left', cellWidth: 68 },
+      3: { halign: 'center', cellWidth: 22, fontStyle: 'bold' },
+      4: { halign: 'center', cellWidth: 22, fontStyle: 'bold' },
+      5: { halign: 'center', cellWidth: 26, fontStyle: 'bold' },
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252],
